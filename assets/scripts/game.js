@@ -7,6 +7,8 @@ function game_init_pre() {
 
   prop.game.speedup=1;
 
+  prop.game.frequency = 0.5;
+
   prop.game.time=0;
   prop.game.delta=0;
 
@@ -37,14 +39,14 @@ function game_init_pre() {
       taxi: 0
     }
   };
-  
+
 }
 
 function game_get_score() {
   var score = 0;
   score += prop.game.score.arrival * 10;
   score += prop.game.score.departure * 10;
-  
+
   score -= prop.game.score.windy_landing * 0.5;
   score -= prop.game.score.windy_takeoff * 0.5;
 
@@ -68,11 +70,15 @@ function game_get_weighted_score() {
 }
 
 function game_timewarp_toggle() {
-  if(prop.game.speedup != 1) {
+  if(prop.game.speedup == 5) {
     prop.game.speedup = 1;
     $(".fast-forwards").removeClass("active");
+    $(".fast-forwards").prop("title", "Set time warp to 2");
+  } else if(prop.game.speedup == 1){
+    prop.game.speedup = 2;
+    $(".fast-forwards").addClass("active");
     $(".fast-forwards").prop("title", "Set time warp to 5");
-  } else {
+  }else {
     prop.game.speedup = 5;
     $(".fast-forwards").addClass("active");
     $(".fast-forwards").prop("title", "Reset time warp");
@@ -156,7 +162,7 @@ function game_update_pre() {
     if(game_time() > timeout[1]) {
       timeout[0].call(timeout[5], timeout[2]);
       if(timeout[4]) {
-        timeout[1] += timeout[3]; 
+        timeout[1] += timeout[3];
       } else {
         remove=true;
       }

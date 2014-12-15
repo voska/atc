@@ -2,6 +2,8 @@
 @import "reset.css";
 @import "canvas.css";
 
+@import "font.css";
+
 @import "controls.css";
 @import "pause.css";
 
@@ -25,4 +27,18 @@ html,body {
 html {
   background-color: #354;
   font-family: monoOne, monospace;
+}
+
+#airport {
+  color: #ddd;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: auto;
+  padding: 10px;
+  z-index: 1000;
+
+  -webkit-user-select: text;
+  -moz-select: text;
+  user-select: text;
 }

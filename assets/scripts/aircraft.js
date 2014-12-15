@@ -97,9 +97,9 @@ var Aircraft=Fiber.extend(function() {
       this.mode        = "cruise";  // "apron", "taxi", "waiting", "takeoff", "cruise", or "landing"
 
       this.requested = {
-        heading:  0,
+        heading:  -1,
         turn:     "auto", // "left", "right", or "auto"
-        fix:      null,
+        fix:      [],
         hold:     false,
         altitude: 0,
         expedite: false,
@@ -114,6 +114,10 @@ var Aircraft=Fiber.extend(function() {
         altitude: 0,
         expedite: false,
         speed:    0
+      };
+
+      this.emergency = {
+
       };
 
       this.parse(options);
@@ -145,7 +149,7 @@ var Aircraft=Fiber.extend(function() {
           position += " " + radio_compass(compass_direction(angle));
           ui_log(airport_get().radio+" tower, "+airline_get(this.airline).callsign.name+" "+radio(this.callsign)+" in your airspace "+position+", over");
         } else if(this.category == "departure") {
-          ui_log(airport_get().radio+" tower, "+airline_get(this.airline).callsign.name+" "+radio(this.callsign)+" awaiting taxi instructions, over");
+          ui_log(airport_get().radio + ', ' + this.getRadioCallsign() + " request taxi");
         }
       }
 
@@ -183,38 +187,40 @@ var Aircraft=Fiber.extend(function() {
       }
       return airline_get(this.airline).callsign.name + " " + callsign.toUpperCase() + heavy;
     },
+    COMMANDS: [
+      "turn",
+      "heading",
+
+      "altitude",
+      "climb",
+      "clear",
+      "descend",
+
+      "speed",
+      "slow",
+
+      "hold",
+      "circle",
+
+      "fix",
+      "track",
+      "direct",
+
+      "takeoff",
+      "depart",
+
+      "wait",
+      "taxi",
+
+      "land",
+
+      "abort",
+      "go around",
+
+      "debug"
+    ],
     runCommand: function(command) {
       command = command.toLowerCase();
-      var COMMANDS = [
-        "turn",
-        "heading",
-
-        "altitude",
-        "climb",
-        "clear",
-        "descend",
-
-        "speed",
-        "slow",
-
-        "hold",
-        "circle",
-
-        "fix",
-
-        "wait",
-        "taxi",
-
-        "takeoff",
-        "depart",
-
-        "land",
-
-        "abort",
-
-        "debug"
-      ];
-
       var strings  = [""];
       var skipping = false;
       for(var i=0;i<command.length;i++) {
@@ -236,8 +242,8 @@ var Aircraft=Fiber.extend(function() {
       for(var i=0;i<strings.length;i++) {
         var string = strings[i];
         var is_command = false;
-        for(var j=0;j<COMMANDS.length;j++) {
-          if(COMMANDS[j].indexOf(string) == 0) {
+        for(var j=0;j<this.COMMANDS.length;j++) {
+          if(this.COMMANDS[j].indexOf(string) == 0) {
             is_command = true;
             break;
           }
@@ -260,7 +266,7 @@ var Aircraft=Fiber.extend(function() {
       }
 
       var response = [];
-      var response_end = "roger";
+      var response_end = "";
 
       var deferred = [];
 
@@ -336,13 +342,16 @@ var Aircraft=Fiber.extend(function() {
       else if("taxi".indexOf(command) == 0)     command = "wait";
 
       else if("takeoff".indexOf(command) == 0)  command = "takeoff";
-      else if("depart".indexOf(command) == 0)   command = "takeoff";
+      else if("depart".indexOf(command) == 0)  command = "takeoff";
 
       else if("land".indexOf(command) == 0)     command = "land";
 
       else if("fix".indexOf(command) == 0)      command = "fix";
+      else if("track".indexOf(command) == 0)    command = "track";
+      else if("direct".indexOf(command) == 0)   command = "direct";
 
       else if("abort".indexOf(command) == 0)    command = "abort";
+      else if("go around".indexOf(command) == 0)    command = "abort";
 
       else if("debug".indexOf(command) == 0)    command = "debug";
 
@@ -396,10 +405,10 @@ var Aircraft=Fiber.extend(function() {
       if(direction == "auto") direction  = "";
       else                    direction += " ";
 
-      var after = "";
-      if(this.isTakeoff()) after = " after takeoff"
+      if(this.isTakeoff())
+        return ['ok', 'after departure, turn ' + direction + 'heading ' + heading_to_string(this.requested.heading), ''];
 
-      return ["ok", "turn "+direction+"heading " + heading_to_string(this.requested.heading) + after, "roger"];
+      return ['ok', 'turn ' + direction + 'heading ' + heading_to_string(this.requested.heading), ''];
     },
     runAltitude: function(data) {
       var split     = data.split(" ");
@@ -418,13 +427,13 @@ var Aircraft=Fiber.extend(function() {
         expedite = true;
       }
 
-      var after = "";
-      if(this.isTakeoff()) after = " after takeoff";
-
       if(isNaN(altitude)) {
         if(isExpedite(split[0])) {
           this.requested.expedite = true;
-          return ["ok", radio_trend("altitude", this.altitude, this.requested.altitude) + " " + this.requested.altitude + " expedite" + after, "roger"];
+          if(this.isTakeoff())
+            return ['ok', 'after departure, ' + radio_trend('altitude', this.altitude, this.requested.altitude) + " " + this.requested.altitude + ' expedite'];
+
+          return ['ok', radio_trend('altitude', this.altitude, this.requested.altitude) + " " + this.requested.altitude + ' expedite'];
         }
         return ["fail", "altitude not understood", "say again"];
       }
@@ -441,7 +450,10 @@ var Aircraft=Fiber.extend(function() {
       if(expedite) expedite = " expedite";
       else         expedite = "";
 
-      return ["ok", radio_trend("altitude", this.altitude, this.requested.altitude) + " " + this.requested.altitude + expedite + after, "roger"];
+      if(this.isTakeoff())
+        return ['ok', 'after departure, ' + radio_trend('altitude', this.altitude, this.requested.altitude) + ' ' + this.requested.altitude + expedite];
+
+      return ['ok', radio_trend('altitude', this.altitude, this.requested.altitude) + ' ' + this.requested.altitude + expedite];
     },
     runSpeed: function(data) {
       var speed = parseInt(data);
@@ -466,20 +478,26 @@ var Aircraft=Fiber.extend(function() {
       this.cancelFix();
       this.cancelLanding();
 
-      return ["ok", "circling towards the " + this.requested.turn + " at " + this.requested.altitude + " feet", "roger"];
+      return ["ok", "circling towards the " + this.requested.turn + " at " + this.requested.altitude + " feet"];
     },
     runFix: function(data) {
       this.cancelLanding();
 
-      var fix = airport_get().getFix(data);
+      data = data.split(/\s+/);
+      console.log(data);
 
-      if(!fix) {
-        return ["fail", "no fix found with name of " + data.toUpperCase(), "say again"];
+      for(var i=0;i<data.length;i++) {
+        var fix = airport_get().getFix(data[i]);
+
+        if(!fix) {
+          return ["fail", "no fix found with name of " + data[i].toUpperCase(), "say again"];
+        }
+
+        this.requested.fix.push(data[i].toUpperCase());
+
       }
 
-      this.requested.fix = data.toUpperCase();
-
-      return ["ok", "navigate to " + this.requested.fix, "roger"];
+      return ["ok", "navigate to " + this.requested.fix];
     },
     runWait: function(data) {
       if(this.category != "departure") return ["fail", "inbound"];
@@ -502,12 +520,13 @@ var Aircraft=Fiber.extend(function() {
       this.mode = "taxi";
       this.taxi_start = game_time();
 
-      return ["ok", "line up and wait runway " + radio_runway(this.requested.runway)];
+      return ["ok", "taxi to and hold at runway " + radio_runway(this.requested.runway)];
     },
     runTakeoff: function(data) {
       if(this.category != "departure") return ["fail", "inbound", "over"];
 
       if(!this.isLanded()) return ["fail", "already airborne", "over"];
+      if(this.mode =="apron") return ["fail", "no runway selected. taxi first", "over"];
       if(this.mode != "waiting") return ["fail", "taxi to runway " + radio_runway(this.requested.runway) + " not yet complete", "over"];
 
       if(this.requested.altitude <= 0) return ["fail", "no altitude clearance assigned", "over"];
@@ -516,9 +535,13 @@ var Aircraft=Fiber.extend(function() {
 
       if(runway.removeQueue(this, this.requested.runway)) {
         this.mode = "takeoff";
-        prop.game.score.windy_takeoff += -Math.min(this.getWind(), 0);
-        this.requested.heading = runway.getAngle(this.requested.runway) + Math.PI;
-        return ["ok", "taking off runway " + radio_runway(this.requested.runway), ""];
+        var wind_score = -Math.min(this.getWind(), 0)
+        prop.game.score.windy_takeoff += wind_score;
+        if(wind_score)
+          ui_log(true, this.getCallsign() + ' taking off with a tailwind');
+        if(this.requested.heading == -1)
+          this.requested.heading = runway.getAngle(this.requested.runway) + Math.PI;
+        return ["ok", "cleared for takeoff", ""];
       } else {
         var waiting = runway.isWaiting(this, this.requested.runway);
         return ["fail", "number "+waiting+" behind "+runway.waiting[runway.getEnd(this.requested.runway)][waiting+1].getRadioCallsign(), ""];
@@ -545,11 +568,11 @@ var Aircraft=Fiber.extend(function() {
 
       this.cancelFix();
 
-      return ["ok", "land runway " + radio_runway(data) + " at " + airport_get().name, "roger"];
+      return ["ok", "land runway " + radio_runway(data) + " at " + airport_get().radio];
 
     },
     runAbort: function(data) {
-      if(this.requested.fix) {
+      if(this.requested.fix.length > 0) {
         this.cancelFix();
         return ["ok", "maintain heading " + heading_to_string(this.requested.heading) + " at " + this.requested.altitude + " feet", ""];
       } else if(this.requested.runway) {
@@ -562,7 +585,7 @@ var Aircraft=Fiber.extend(function() {
             console.log("aborted taxi to runway");
             ui_log(true, this.getCallsign() + " aborted taxi to runway");
             prop.game.score.abort.taxi += 1;
-            return ["ok", "taxi back to terminal", "roger"];
+            return ["ok", "taxi back to terminal"];
           } else {
             return ["fail", "cannot taxi back to terminal", "over"];
           }
@@ -584,8 +607,8 @@ var Aircraft=Fiber.extend(function() {
 
     },
     cancelFix: function() {
-      if(this.requested.fix) {
-        this.requested.fix = null;
+      if(this.requested.fix.length > 0) {
+        this.requested.fix = []
         this.requested.heading = round(this.heading);
         this.updateStrip();
         return true;
@@ -839,13 +862,16 @@ var Aircraft=Fiber.extend(function() {
           this.target.heading = this.heading - Math.PI/4;
         }
       }
-      if(this.requested.fix) {
-        var fix = airport_get().getFix(this.requested.fix);
+      if(this.requested.fix.length > 0) {
+        var fix = airport_get().getFix(this.requested.fix[0]);
         var a = this.position[0] - fix[0];
         var b = this.position[1] - fix[1];
         if(distance2d(this.position, fix) < 0.5) {
-          ui_log(this.getRadioCallsign() + " passed over " + this.requested.fix.toUpperCase() + ", will maintain heading " + heading_to_string(this.requested.heading) + " at " + this.requested.altitude + " feet");
-          this.cancelFix();
+//          ui_log(this.getRadioCallsign() + " passed over " + this.requested.fix.toUpperCase() + ", will maintain heading " + heading_to_string(this.requested.heading) + " at " + this.requested.altitude + " feet");
+          if(this.requested.fix.length > 1)
+            this.requested.fix.splice(0, 1);
+          else
+            this.cancelFix();
         } else {
           this.target.heading = Math.atan2(a, b) - Math.PI;
         }
@@ -954,8 +980,8 @@ var Aircraft=Fiber.extend(function() {
         var other = prop.aircraft.list[i];
         if(this == other) continue;
 
-        var other_land = other.isLanded();
-        var this_land  = this.isLanded();
+        var other_land = other.isLanded()  || other.altitude < 990;
+        var this_land  = this.isLanded()   || this.altitude < 990;
 
         if((!other_land && !this_land)) {
           if((distance2d(this.position, other.position) < 5.5) &&     // closer than ~4 miles
@@ -1025,6 +1051,8 @@ var Aircraft=Fiber.extend(function() {
           }
         } else {
           if(this.mode == "apron") {
+            heading.text("apron");
+
             altitude.text("ready");
             altitude.addClass("runway");
 
@@ -1058,8 +1086,8 @@ var Aircraft=Fiber.extend(function() {
         speed.text(this.requested.speed);
       }
 
-      if(this.requested.fix) {
-        heading.text(this.requested.fix);
+      if(this.requested.fix.length > 0) {
+        heading.text(this.requested.fix[0]);
         heading.addClass("hold");
       } else if(this.requested.hold) {
         heading.text("hold "+this.requested.turn);
@@ -1210,10 +1238,9 @@ function aircraft_add(model) {
 
 function aircraft_visible(aircraft, factor) {
   if(!factor) factor=1;
-  var width2  = pixels_to_km((prop.canvas.size.width / 2)  + 80)*factor;
-  var height2 = pixels_to_km((prop.canvas.size.height / 2) + 80)*factor;
-  if(((aircraft.position[0] < -width2  || aircraft.position[0] > width2)) ||
-     ((aircraft.position[1] < -height2 || aircraft.position[1] > height2))) {
+  var size = 100 * factor;
+  if(((aircraft.position[0] < -size || aircraft.position[0] > size)) ||
+     ((aircraft.position[1] < -size || aircraft.position[1] > size))) {
     return false;
   }
   return true;

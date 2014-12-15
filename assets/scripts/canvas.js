@@ -68,7 +68,7 @@ function canvas_should_draw() {
 
 // DRAW
 
-function canvas_draw_runway(cc, runway) {
+function canvas_draw_runway(cc, runway, mode) {
   var length2 = round(km(runway.length / 2));
   var angle   = runway.angle;
 
@@ -79,23 +79,34 @@ function canvas_draw_runway(cc, runway) {
 
   cc.rotate(angle);
 
-  cc.strokeStyle = "#899";
-  cc.beginPath();
-  cc.moveTo(0, -length2);
-  cc.lineTo(0,  length2);
-  cc.stroke();
+  if(!mode) {
+    cc.strokeStyle = "#899";
+    cc.beginPath();
+    cc.moveTo(0, -length2);
+    cc.lineTo(0,  length2);
+    cc.stroke();
+  } else {
+    cc.strokeStyle = "#465";
+    cc.lineWidth = 2;
+    cc.beginPath();
 
-  cc.strokeStyle = "#465";
-  cc.lineWidth = 2;
-  cc.beginPath();
+    cc.moveTo(0, -length2);
+    cc.lineTo(0, -length2 - km(20));
 
-  cc.moveTo(0, -length2);
-  cc.lineTo(0, -length2 - km(20));
+    cc.moveTo(0,  length2);
+    cc.lineTo(0,  length2 + km(20));
 
-  cc.moveTo(0,  length2);
-  cc.lineTo(0,  length2 + km(20));
+    cc.stroke();
+  }
+}
 
-  cc.stroke();
+function canvas_draw_runway_label(cc, runway) {
+  var length2 = round(km(runway.length / 2)) + 0.5;
+  var angle   = runway.angle;
+
+  cc.translate(round(km(runway.position[0])), -round(km(runway.position[1])));
+
+  cc.rotate(angle);
 
   var text_height = 8;
   cc.textAlign    = "center";
@@ -114,6 +125,7 @@ function canvas_draw_runway(cc, runway) {
   cc.translate(round(km(runway.name_offset[1][0])), -round(km(runway.name_offset[1][1])));
   cc.fillText(runway.name[1], 0, 0);
   cc.restore();
+
 }
 
 function canvas_draw_runways(cc) {
@@ -123,9 +135,49 @@ function canvas_draw_runways(cc) {
   var airport=airport_get();
   for(var i=0;i<airport.runways.length;i++) {
     cc.save();
-    canvas_draw_runway(cc, airport.runways[i]);
+    canvas_draw_runway(cc, airport.runways[i], true);
     cc.restore();
   }
+  for(var i=0;i<airport.runways.length;i++) {
+    cc.save();
+    canvas_draw_runway(cc, airport.runways[i], false);
+    cc.restore();
+  }
+}
+
+function canvas_draw_runway_labels(cc) {
+  cc.fillStyle   = "rgba(255, 255, 255, 0.8)";
+  var airport=airport_get();
+  for(var i=0;i<airport.runways.length;i++) {
+    cc.save();
+    canvas_draw_runway_label(cc, airport.runways[i]);
+    cc.restore();
+  }
+}
+
+function canvas_draw_scale(cc) {
+  cc.fillStyle   = "rgba(255, 255, 255, 0.8)";
+  cc.strokeStyle = "rgba(255, 255, 255, 0.8)";
+
+  var offset = 10;
+  var height = 5;
+
+  var length = round(1 / prop.ui.scale * 50)
+  var px_length = round(km(length));
+
+  cc.translate(0.5, 0.5);
+
+  cc.lineWidth = 1;
+  cc.moveTo(prop.canvas.size.width - offset, offset);
+  cc.lineTo(prop.canvas.size.width - offset, offset + height);
+  cc.lineTo(prop.canvas.size.width - offset - px_length, offset + height);
+  cc.lineTo(prop.canvas.size.width - offset - px_length, offset);
+  cc.stroke();
+
+  cc.translate(-0.5, -0.5);
+
+  cc.textAlign = 'center';
+  cc.fillText(length + ' km', prop.canvas.size.width - offset - px_length * 0.5, offset + height + 17);
 }
 
 function canvas_draw_fix(cc, name, fix) {
@@ -432,15 +484,18 @@ function canvas_draw_compass(cc) {
 }
 
 function canvas_update_post() {
-  if(prop.canvas.dirty || !game_paused()) {
-    var elapsed = game_time() - airport_get().start;
-    var alpha   = crange(0.1, elapsed, 0.4, 0, 1);
+  var elapsed = game_time() - airport_get().start;
+  var alpha   = crange(0.1, elapsed, 0.4, 0, 1);
+
+  var framestep = Math.round(crange(1, prop.game.speedup, 10, 30, 1));
+
+  if(prop.canvas.dirty || (!game_paused() && prop.time.frames % framestep == 0) || elapsed < 1) {
     var cc=canvas_get("navaids");
     var fading  = (elapsed < 1);
 
     cc.font = "11px monoOne, monospace";
 
-    if(prop.canvas.dirty || fading) {
+    if(prop.canvas.dirty || fading || true) {
       cc.save();
 
       canvas_clear(cc);
@@ -461,14 +516,14 @@ function canvas_update_post() {
 
     // compass
 
-    cc=canvas_get("compass");
+//    cc=canvas_get("compass");
 
     cc.font = "bold 10px monoOne, monospace";
 
-    if(prop.canvas.dirty || fading) {
+    if(prop.canvas.dirty || fading || true) {
       cc.save();
 
-      canvas_clear(cc);
+//      canvas_clear(cc);
       cc.translate(round(prop.canvas.size.width/2), round(prop.canvas.size.height/2));
       canvas_draw_compass(cc);
 
@@ -477,14 +532,14 @@ function canvas_update_post() {
 
     //
 
-    cc=canvas_get("info");
+//    cc=canvas_get("info");
 
     cc.font = "10px monoOne, monospace";
 
     cc.save();
 
     cc.globalAlpha = alpha;
-    canvas_clear(cc);
+//    canvas_clear(cc);
     cc.translate(round(prop.canvas.size.width/2), round(prop.canvas.size.height/2));
     canvas_draw_all_info(cc);
 
@@ -492,16 +547,27 @@ function canvas_update_post() {
 
     //
 
-    cc=canvas_get("aircraft");
+//    cc=canvas_get("aircraft");
 
     if(prop.canvas.dirty || canvas_should_draw() || true) {
       cc.save();
       cc.globalAlpha = alpha;
-      canvas_clear(cc);
+//      canvas_clear(cc);
       cc.translate(round(prop.canvas.size.width/2), round(prop.canvas.size.height/2));
       canvas_draw_all_aircraft(cc);
       cc.restore();
     }
+
+    cc.save();
+    cc.globalAlpha = alpha;
+    cc.translate(round(prop.canvas.size.width/2), round(prop.canvas.size.height/2));
+    canvas_draw_runway_labels(cc);
+    cc.restore();
+
+    cc.save();
+    cc.globalAlpha = alpha;
+    canvas_draw_scale(cc);
+    cc.restore();
 
     //
 

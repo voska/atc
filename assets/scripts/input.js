@@ -12,6 +12,8 @@ function input_init_pre() {
   prop.input.click    = [0, 0];
 
   prop.input.positions = "";
+
+  prop.input.tab_compl = {};
 }
 
 function input_init() {
@@ -20,6 +22,22 @@ function input_init() {
     if(e.which == 27) {
       if(prop.tutorial.open) tutorial_close();
       else if($("#airport-switch").hasClass("open")) ui_airport_close();
+    }
+    if(e.which == 187) {
+      prop.ui.scale *= 1/0.9;
+      localStorage['atc-scale'] = prop.ui.scale;
+      prop.canvas.dirty = true;
+      return false;
+    } else if(e.which == 189) {
+      prop.ui.scale *= 0.9;
+      localStorage['atc-scale'] = prop.ui.scale;
+      prop.canvas.dirty = true;
+      return false;
+    } else if(e.which == 48) {
+      prop.ui.scale = 5;
+      localStorage['atc-scale'] = prop.ui.scale;
+      prop.canvas.dirty = true;
+      return false;
     }
     if(!prop.tutorial.open) return;
     if(e.which == 33) {
@@ -82,6 +100,7 @@ function input_select(callsign) {
 }
 
 function input_change() {
+  tab_completion_reset();
   var value = $("#command").val();
   prop.input.command = value;
   input_parse();
@@ -116,6 +135,8 @@ function input_parse() {
   var number = 0;
   var match  = null;
 
+  prop.canvas.dirty = true;
+
   for(var i=0;i<prop.aircraft.list.length;i++) {
     var aircraft=prop.aircraft.list[i];
     if(aircraft.matchCallsign(prop.input.callsign)) {
@@ -125,30 +146,80 @@ function input_parse() {
     }
   }
   if(number == 1) {
-//    $("#sidebar").scrollTop(round(match.html.position().top + ($(window).height() / 3)));
+    $("#sidebar").scrollTop(round(match.html.position().top + ($(window).height() / 3)));
   }
+
 }
 
 function input_keydown(e) {
   if(e.which == 13) { // enter key
-    console.log('you hit enter');
     input_parse();
     if(input_run()) {
       prop.input.history.unshift(prop.input.callsign);
       $("#command").val("");
       prop.input.command = "";
+      tab_completion_reset();
       input_parse();
     }
     prop.input.history_item = null;
   } else if(e.which == 38) {
-    console.log('you hit the up arrow');
     input_history_prev();
     e.preventDefault();
   } else if(e.which == 40) {
-    console.log('you hit the down arrow');
     input_history_next();
     e.preventDefault();
+  } else if(e.which == 9) { // tab key
+    if(!prop.input.tab_compl.matches) {
+      tab_completion_match();
+    }
+    tab_completion_cycle({backwards: e.shiftKey});
+    e.preventDefault();
   }
+}
+
+function tab_completion_cycle(opt) {
+  var matches = prop.input.tab_compl.matches;
+  if(!matches || matches.length === 0) {
+    return;
+  }
+  var i = prop.input.tab_compl.cycle_item;
+  if(opt.backwards) {
+    i = (i <= 0) ? matches.length-1 : i-1;
+  } else {
+    i = (i >= matches.length-1) ? 0 : i+1;
+  }
+  $("#command").val(matches[i]);
+  prop.input.command = matches[i];
+  prop.input.tab_compl.cycle_item = i;
+  input_parse();
+}
+
+function tab_completion_match() {
+  var val = $("#command").val();
+  var matches;
+  var aircrafts = prop.aircraft.list;
+  if(prop.input.callsign) {
+    aircrafts = aircrafts.filter(function(a) {
+      return a.matchCallsign(prop.input.callsign);
+    });
+  }
+  matches = aircrafts.map(function(a) {
+    return a.getCallsign();
+  });
+  if(aircrafts.length === 1 && (prop.input.data || val[val.length-1] === ' ')){
+    matches = aircrafts[0].COMMANDS.filter(function(c) {
+      return c.toLowerCase().indexOf(prop.input.data.toLowerCase()) === 0;
+    }).map(function(c) {
+      return val.substring(0, prop.input.callsign.length+1) + c;
+    });
+  }
+  tab_completion_reset();
+  prop.input.tab_compl.matches = matches;
+  prop.input.tab_compl.cycle_item = -1;
+}
+
+function tab_completion_reset() {
+  prop.input.tab_compl = {};
 }
 
 function input_history_clamp() {
@@ -165,7 +236,7 @@ function input_history_prev() {
   prop.input.history_item += 1;
   input_history_clamp();
 
-  var command = prop.input.history[prop.input.history_item];
+  var command = prop.input.history[prop.input.history_item] + ' ';
   $("#command").val(command);
   input_change();
 }
