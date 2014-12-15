@@ -459,6 +459,7 @@ var Aircraft=Fiber.extend(function() {
       var speed = parseInt(data);
 
       if(isNaN(speed)) return ["fail", "speed not understood", "say again"];
+      if(250<speed) speed = 250;
 
       if(this.mode == "landing")
         this.cancelLanding();
