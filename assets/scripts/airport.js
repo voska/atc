@@ -377,7 +377,7 @@ function airport_init() {
 }
 
 function airport_ready() {
-  airport_set("kdbg");
+  airport_set("ksfo");
 }
 
 function airport_load(icao) {
